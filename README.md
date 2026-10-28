@@ -1,15 +1,25 @@
 # THE FINALS Dagger Prop: Recoilless Blade
 
-A parametric, 3D-printable prop of the THE FINALS dagger in its **Recoilless Blade** skin. The proportions were measured from in-game skin showcase images, so the details are close approximations.
+A parametric, 3D-printable prop of the THE FINALS dagger in its **Recoilless Blade** skin. Every dimension was measured off the in-game skin showcase image, at 0.405 mm per image pixel.
 
 ![Render](images/render.png)
 
+The comparison below puts the cosmetic image (top) at the same scale as the model:
+
+![Comparison with the cosmetic](images/compare.png)
+
 ## Features
 
-- **Blade:** 105 mm long, 18 mm wide and 4 mm thick. Both edges are serrated near the guard. The front section twists half a turn to the tip, and two slots run through the centerline and spiral with the twist.
-- **Handle:** a round recoilless-rifle tube, 108 mm long with a 27 mm grip. It has flared front and rear flanges (44 mm across), six recessed windows, two grooves that mark out the red band, and a ribbed venturi-nozzle pommel.
+- **Blade:** 108 mm long, 13.8 mm wide and 3.5 mm thick. It stays nearly full width for about two-thirds of its length, then tapers to the point.
+  - Both edges are serrated from 12 to 50 mm out from the guard.
+  - The twist runs along the whole blade. It's a gentle 40° real twist plus spiral lobe lines carved into both faces, which keeps the top-down outline full width like the cosmetic.
+  - Two slots run through the centerline.
+- **Handle:** a slim recoilless-rifle tube, 116 mm long with a 19.4 mm grip.
+  - Concave bells flare out to the front flange (34 mm across) and the rear flange (32 mm).
+  - Eight recessed windows sit in alternating rows, and two grooves mark out the red band.
+  - A domed cap and a ribbed venturi nozzle form the pommel.
 - **Lanyard bail:** two small holes through the rear flange take a bent wire loop, like the one on the in-game skin.
-- **Overall length:** about 211 mm. Change `SCALE` in `dagger.py` to resize the whole prop.
+- **Overall length:** about 222 mm. Change `SCALE` in `dagger.py` to resize the whole prop.
 
 ## Safety
 
@@ -18,7 +28,7 @@ This is a **prop**. The edges are modelled blunt (`EDGE_THICKNESS = 1.0` mm) and
 ## Files
 
 - `stl/dagger_full.stl` prints in one piece.
-- `stl/dagger_blade.stl` is the blade with a 55 x 12 x 4 mm tang.
+- `stl/dagger_blade.stl` is the blade with a 50 x 9 x 3.5 mm tang.
 - `stl/dagger_handle.stl` is the handle, with a tang slot (0.15 mm clearance per side). Print the two parts separately to make painting easier, then glue them together.
 - `dagger.py` is the parametric model. Edit the ALL_CAPS constants at the top and re-run it.
 - `render_preview.py` writes a quick matplotlib preview to `images/preview.png`.
@@ -38,7 +48,7 @@ python3 render_preview.py
 ## Printing (Anycubic Photon M3 Max)
 
 - Every part fits the M3 Max build volume (298 x 164 x 300 mm).
-- **Handle:** print it standing on the nozzle end, tilted about 10-15°. Hollow it in the slicer (2.5-3 mm wall) to save resin, and add drain holes inside the tang slot.
+- **Handle:** print it standing on the nozzle end, tilted about 10-15°. The grip is slim, so print it solid (about 37 cm³ of resin), or hollow it with a wall of at least 3 mm.
 - **Blade:** print it tip-up at 15-30°. Put supports on the tang, and use light supports along the spine, keeping them off the twisted faces.
 - **Resin:** the twisted tip and the narrow strips beside the slots are the most fragile parts, so use a tough or ABS-like resin for the blade.
 - **Tang fit:** test-fit the tang in the slot. If it's too tight or too loose for your resin, change `TANG_CLEARANCE`.
