@@ -25,7 +25,7 @@ The comparison below puts the cosmetic image (top) at the same scale as the mode
 
 ## Safety
 
-This is a **prop**. The edges are modelled blunt (`EDGE_THICKNESS = 1.0` mm) and the tip is rounded (`TIP_RADIUS`). Keep it that way. Check your local rules before carrying it to events.
+This is a **prop**. The fin edges are modelled blunt and rounded (`FIN_EDGE_THICKNESS = 2.0` mm), and the tip closes to a rounded point. Keep it that way. Check your local rules before carrying it to events.
 
 ## Files
 
