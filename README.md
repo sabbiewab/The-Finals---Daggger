@@ -10,10 +10,10 @@ The comparison below puts the cosmetic image (top) at the same scale as the mode
 
 ## Features
 
-- **Blade:** 108 mm long, 13.8 mm wide and 3.5 mm thick. It stays nearly full width for about two-thirds of its length, then tapers to the point.
-  - Both edges are serrated from 12 to 50 mm out from the guard.
-  - The twist runs along the whole blade. It's a gentle 40° real twist plus spiral lobe lines carved into both faces, which keeps the top-down outline full width like the cosmetic.
-  - Two slots run through the centerline.
+- **Blade:** 108 mm long.
+  - Next to the guard is a flat section, 13.8 mm wide and 3.5 mm thick, serrated on both edges from 12 to 39 mm.
+  - At 40 mm it splits into three fins that twist like a corkscrew (220°, eased in and out) out to a spear point.
+  - Change `CORKSCREW_TWIST` in `dagger.py` for a tighter or looser twist.
 - **Handle:** a slim recoilless-rifle tube, 116 mm long with a 19.4 mm grip.
   - Concave bells flare out to the front flange (34 mm across) and the rear flange (32 mm).
   - Eight recessed windows sit in alternating rows, and two grooves mark out the red band.
@@ -41,7 +41,7 @@ python3 render_preview.py
 
 ## Painting (to match the skin)
 
-- **Blade:** gunmetal or dark chrome. Use a metallic silver drybrush on the serrations and slot edges.
+- **Blade:** gunmetal or dark chrome. Use a metallic silver drybrush on the serrations and fin edges.
 - **Handle:** satin black. Paint red on the band between the two grooves and on the edges of both flanges. A dark red ring on each nozzle rib adds depth.
 - **Decals:** add THE FINALS triangle logo on the front bell, and diagonal black stripes over the red band, as decals or masked paint.
 
@@ -49,8 +49,8 @@ python3 render_preview.py
 
 - Every part fits the M3 Max build volume (298 x 164 x 300 mm).
 - **Handle:** print it standing on the nozzle end, tilted about 10-15°. The grip is slim, so print it solid (about 37 cm³ of resin), or hollow it with a wall of at least 3 mm.
-- **Blade:** print it tip-up at 15-30°. Put supports on the tang, and use light supports along the spine, keeping them off the twisted faces.
-- **Resin:** the twisted tip and the narrow strips beside the slots are the most fragile parts, so use a tough or ABS-like resin for the blade.
+- **Blade:** print it tip-up at 15-30°. Put supports on the tang, and use light supports along the spine, keeping them off the corkscrew fins.
+- **Resin:** the corkscrew fins are the most fragile parts (1 mm edges), so use a tough or ABS-like resin for the blade.
 - **Tang fit:** test-fit the tang in the slot. If it's too tight or too loose for your resin, change `TANG_CLEARANCE`.
 
 ## Notes

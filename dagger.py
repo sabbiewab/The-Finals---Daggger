@@ -3,8 +3,8 @@
 Every dimension below was measured off the in-game skin showcase image (side view, knife
 rotated level) at 0.405 mm per image pixel, which puts the prop at ~224 mm overall.
 
-  - slim blade, serrated on both edges near the guard, twisting along its whole length
-    (a gentle real twist plus carved spiral lobe lines), with two through-slots
+  - slim blade: a flat section serrated on both edges near the guard, which splits into
+    three fins that twist a full turn like a corkscrew out to the tip
   - slim round tube handle with flared bells into front and rear flanges, eight recessed
     windows, a ring marking out the red band, and a ribbed venturi nozzle as the pommel
 
@@ -19,42 +19,36 @@ import os
 import numpy as np
 import shapely
 import trimesh
-from manifold3d import CrossSection, Manifold, OpType
+from manifold3d import CrossSection, Manifold, Mesh, OpType
 from shapely.geometry import LineString, Polygon
 
 # Overall scale (1.0 = ~224 mm overall, as measured)
 SCALE = 1.0
 
-# Blade outline: (distance from guard, half width) measured from the skin image
-BLADE_PROFILE = [(0.0, 6.9), (13.0, 6.5), (29.0, 6.2), (45.0, 6.2), (60.0, 6.6),
-                 (70.0, 6.6), (80.0, 5.9), (90.0, 4.6), (98.0, 3.2), (104.0, 1.8), (108.0, 0.0)]
-BLADE_LENGTH = BLADE_PROFILE[-1][0]
+# Flat serrated section next to the guard: (distance from guard, half width), measured from the skin image
+FLAT_PROFILE = [(0.0, 6.9), (13.0, 6.5), (29.0, 6.2), (40.3, 6.2)]
 BLADE_THICKNESS = 3.5         # spine thickness
 EDGE_THICKNESS = 1.0          # blunt edge for a safe, non-brittle resin prop
 GRIND_HALF_ANGLE = 12.0       # degrees, flat grind from edge to full thickness
-TIP_RADIUS = 0.8              # rounds the point in plan view
 
-# Twist runs along the whole blade
-TWIST_START = 8.0             # distance from guard where the twist begins
-TWIST_ANGLE = 40.0            # degrees of real twist from TWIST_START to the tip
-
-# Spiral lobe lines carved into both faces: they trace the edges of a half-turn twisted
-# ribbon (y = +/- halfWidth * cos(phase)), which gives the skin's corkscrew look while
-# keeping the top-down outline full width
-SPIRAL_START = 18.0           # distance from guard where the lines leave the edges
-SPIRAL_PHASE = (40.0, 180.0)  # degrees of phase at SPIRAL_START and at the tip
-SPIRAL_DEPTH = 0.7
-SPIRAL_WIDTH = 1.1            # gaussian half width of the groove
-
-# Through-slots along the centerline, as (start, end) distances from the guard
-BLADE_SLOTS = [(33.0, 57.5), (70.0, 84.0)]
-SLOT_WIDTH = 2.4
-
-# Serrations on both edges near the guard
+# Serrations on both edges of the flat section
 SERRATION_START = 12.0
-SERRATION_END = 50.0
+SERRATION_END = 39.0
 SERRATION_PITCH = 2.6
 SERRATION_RADIUS = 1.25
+
+# Corkscrew section: the flat blade splits into three fins that twist like a corkscrew to the tip
+CORKSCREW_START = 40.0
+CORKSCREW_SPLIT = 8.0         # length over which the third fin grows and the fins spread to 120 degrees
+CORKSCREW_TWIST = 220.0       # degrees of twist from CORKSCREW_START to the tip (eased in and out)
+# (distance from guard, fin radius from the blade axis); the three fins project ~1.6x this wide
+FIN_PROFILE = [(40.0, 6.2), (48.0, 7.8), (60.0, 8.6), (72.0, 8.2), (87.0, 5.8),
+               (98.0, 3.6), (104.0, 2.2), (108.0, 0.6)]
+FIN_ROOT_THICKNESS = (3.5, 1.2)   # at the corkscrew start and at the tip
+FIN_EDGE_THICKNESS = 1.0
+CORKSCREW_STATION = 0.3       # mm between lofted cross-sections
+CORKSCREW_RAYS = 720          # boundary samples per cross-section
+BLADE_LENGTH = FIN_PROFILE[-1][0]
 
 # Handle (all positions are distances back from the guard face)
 GRIP_RADIUS = 9.7
@@ -94,22 +88,17 @@ def smoothCurve(points, values, samples):
     return np.convolve(padded, kernel, mode="valid")
 
 
-def bladeHalfWidth(x):
-    """Half width of the blade at distance x from the guard face."""
-    controlX, controlHalfWidth = zip(*BLADE_PROFILE)
+def flatHalfWidth(x):
+    """Half width of the flat section at distance x from the guard face."""
+    controlX, controlHalfWidth = zip(*FLAT_PROFILE)
     return np.interp(x, controlX, controlHalfWidth)
 
 
-def bladeOutline():
-    """Plan-view outline of the blade as a shapely polygon (rounded tip)."""
-    xs = np.linspace(-0.5, BLADE_LENGTH, 500)
-    hw = smoothCurve(xs, bladeHalfWidth(np.clip(xs, 0, None)), xs)
-    hw[-1] = 0.0
-    upper = np.column_stack([xs, hw])
-    lower = np.column_stack([xs[::-1], -hw[::-1]])
-    outline = Polygon(np.vstack([upper, lower[1:-1]]))
-    # Morphological opening rounds the convex point without changing the rest.
-    return outline.buffer(-TIP_RADIUS, quad_segs=16).buffer(TIP_RADIUS, quad_segs=16)
+def flatOutline():
+    """Plan-view outline of the flat section, from just inside the guard to the corkscrew."""
+    xs = np.linspace(-0.5, FLAT_PROFILE[-1][0], 200)
+    hw = smoothCurve(xs, flatHalfWidth(np.clip(xs, 0, None)), xs)
+    return Polygon(np.vstack([np.column_stack([xs, hw]), np.column_stack([xs[::-1], -hw[::-1]])]))
 
 
 def polygonToCrossSection(poly):
@@ -124,7 +113,7 @@ def polygonToCrossSection(poly):
 
 
 def serratedOutline(outline):
-    """Blade outline with the serration scallops and through-slots cut in 2D."""
+    """Outline with the serration scallops cut into both edges."""
     cuts = []
     x = SERRATION_START + SERRATION_PITCH / 2.0
     while x + SERRATION_PITCH / 2.0 <= SERRATION_END:
@@ -133,54 +122,97 @@ def serratedOutline(outline):
             y = side * (edgeY + SERRATION_RADIUS * 0.15)
             cuts.append(shapely.Point(x, y).buffer(SERRATION_RADIUS, quad_segs=8))
         x += SERRATION_PITCH
-    for start, end in BLADE_SLOTS:
-        cuts.append(LineString([(start, 0), (end, 0)]).buffer(SLOT_WIDTH / 2.0, quad_segs=12))
     return outline.difference(shapely.union_all(cuts))
 
 
-def spiralGrooveDepth(x, y, thick):
-    """Depth of the spiral lobe grooves on each face at blade points (x, y)."""
-    t = np.clip((x - SPIRAL_START) / (BLADE_LENGTH - SPIRAL_START), 0, 1)
-    phase = np.radians(SPIRAL_PHASE[0] + (SPIRAL_PHASE[1] - SPIRAL_PHASE[0]) * t)
-    lineY = bladeHalfWidth(x) * np.cos(phase)
-    groove = np.maximum(np.exp(-((y - lineY) / SPIRAL_WIDTH) ** 2),
-                        np.exp(-((y + lineY) / SPIRAL_WIDTH) ** 2))
-    # Fade in from the start, and fade out over the edge bevels so the edges stay clean
-    fade = np.clip((x - SPIRAL_START) / 6.0, 0, 1) * np.clip((thick - 2.0) / 1.0, 0, 1)
-    return SPIRAL_DEPTH * groove * fade
-
-
-def twistAngle(x):
-    """Real twist about the X axis, ramping in smoothly after TWIST_START."""
-    t = np.clip((x - TWIST_START) / (BLADE_LENGTH - TWIST_START), 0, 1)
-    return np.radians(TWIST_ANGLE) * t * t * (2 - t)
-
-
-def makeBlade():
-    """Refined slab of the 2D outline, warped into the grind, spiral grooves and twist."""
-    smoothOutline = bladeOutline()
-    outline = serratedOutline(smoothOutline)
-    slab = Manifold.extrude(polygonToCrossSection(outline), 1.0).translate((0, 0, -0.5))
-    slab = slab.refine_to_length(MESH_EDGE_LENGTH)
-    # Grind toward the smooth outer edge, so the serrations cut through a clean bevel and the
-    # slots stay full thickness. The heel (x < 0.5) is hidden in the guard and stays full too.
-    edgeOnly = shapely.difference(smoothOutline.exterior, shapely.box(-10, -50, 0.5, 50))
+def makeFlatSection():
+    """Flat serrated blade, built by warping a refined slab by distance to the smooth edge."""
+    smoothOutline = flatOutline()
+    slab = Manifold.extrude(polygonToCrossSection(serratedOutline(smoothOutline)), 1.0)
+    slab = slab.translate((0, 0, -0.5)).refine_to_length(MESH_EDGE_LENGTH)
+    # Grind toward the smooth side edges only: the heel hides in the guard and the far end
+    # is buried in the corkscrew, so both stay full thickness.
+    sideEdges = shapely.difference(smoothOutline.exterior, shapely.box(-10, -50, 0.5, 50))
+    sideEdges = shapely.difference(sideEdges, shapely.box(FLAT_PROFILE[-1][0] - 0.5, -50, 200, 50))
     slope = 2.0 * np.tan(np.radians(GRIND_HALF_ANGLE))
 
     def warpBatch(verts):
         verts = np.array(verts, dtype=float)
-        x, y = verts[:, 0], verts[:, 1]
-        dist = shapely.distance(shapely.points(x, y), edgeOnly)
+        dist = shapely.distance(shapely.points(verts[:, 0], verts[:, 1]), sideEdges)
         thick = np.minimum(BLADE_THICKNESS, EDGE_THICKNESS + slope * dist)
-        thick -= 2.0 * spiralGrooveDepth(x, y, thick)
         # Slab spans z = -0.5..0.5; scale linearly so refined side-wall vertices stay in order.
-        z = verts[:, 2] * thick
-        theta = twistAngle(x)
-        verts[:, 1] = y * np.cos(theta) - z * np.sin(theta)
-        verts[:, 2] = y * np.sin(theta) + z * np.cos(theta)
+        verts[:, 2] = verts[:, 2] * thick
         return verts
 
     return slab.warp_batch(warpBatch)
+
+
+def finCrossSection(u):
+    """Three-fin star cross-section at distance u from the guard, before twisting.
+
+    Fin directions are angles in the YZ plane (y = sin, z = cos). At the corkscrew start two
+    fins point along +/-Y like the flat blade; over CORKSCREW_SPLIT they spread to 120 degrees
+    apart while the third fin grows out of the +Z face.
+    """
+    split = np.clip((u - CORKSCREW_START) / CORKSCREW_SPLIT, 0, 1)
+    split = split * split * (3 - 2 * split)
+    controlU, controlRadius = zip(*FIN_PROFILE)
+    radius = float(np.interp(u, controlU, controlRadius))
+    along = np.clip((u - CORKSCREW_START) / (BLADE_LENGTH - CORKSCREW_START), 0, 1)
+    rootHalf = (FIN_ROOT_THICKNESS[0] + (FIN_ROOT_THICKNESS[1] - FIN_ROOT_THICKNESS[0]) * along) / 2.0
+    edgeHalf = min(FIN_EDGE_THICKNESS / 2.0, rootHalf)
+    fins = [(90.0 + 30.0 * split, radius), (270.0 - 30.0 * split, radius), (0.0, radius * split)]
+    shapes = [shapely.Point(0, 0).buffer(rootHalf, quad_segs=16)]
+    for angle, finRadius in fins:
+        reach = finRadius - edgeHalf
+        if reach <= rootHalf:
+            continue
+        a = np.radians(angle)
+        tip = shapely.Point(reach * np.sin(a), reach * np.cos(a)).buffer(edgeHalf, quad_segs=16)
+        shapes.append(shapely.union_all([shapes[0], tip]).convex_hull)
+    # Closing adds small fillets where the fins meet the core.
+    return shapely.union_all(shapes).buffer(0.4, quad_segs=8).buffer(-0.4, quad_segs=8)
+
+
+def makeCorkscrew():
+    """Loft the twisted three-fin section from inside the flat blade out to the tip."""
+    stations = np.arange(CORKSCREW_START - 0.5, BLADE_LENGTH, CORKSCREW_STATION)
+    stations = np.append(stations, BLADE_LENGTH)
+    rayAngles = np.linspace(0, 2 * np.pi, CORKSCREW_RAYS, endpoint=False)
+    rays = [LineString([(0, 0), (30 * np.sin(a), 30 * np.cos(a))]) for a in rayAngles]
+    rings = []
+    for u in stations:
+        # The star is convex along every ray from the axis, so the hit length is the boundary radius.
+        reach = shapely.length(shapely.intersection(rays, finCrossSection(u)))
+        t = np.clip((u - CORKSCREW_START) / (BLADE_LENGTH - CORKSCREW_START), 0, 1)
+        twist = np.radians(CORKSCREW_TWIST) * t * t * (3 - 2 * t)
+        rings.append(np.column_stack([np.full(CORKSCREW_RAYS, u),
+                                      reach * np.sin(rayAngles + twist), reach * np.cos(rayAngles + twist)]))
+    return loftRings(rings)
+
+
+def loftRings(rings):
+    """Closed solid through equal-size rings of points, capped at both ends."""
+    count = len(rings[0])
+    verts = np.vstack(rings + [rings[0].mean(axis=0, keepdims=True), rings[-1].mean(axis=0, keepdims=True)])
+    firstCenter, lastCenter = len(rings) * count, len(rings) * count + 1
+    faces = []
+    for r in range(len(rings) - 1):
+        for i in range(count):
+            a, b = r * count + i, r * count + (i + 1) % count
+            faces += [[a, b, a + count], [b, b + count, a + count]]
+    last = (len(rings) - 1) * count
+    for i in range(count):
+        faces.append([firstCenter, (i + 1) % count, i])
+        faces.append([lastCenter, last + i, last + (i + 1) % count])
+    mesh = trimesh.Trimesh(verts, np.array(faces), process=True)
+    trimesh.repair.fix_normals(mesh)
+    return Manifold(Mesh(vert_properties=np.asarray(mesh.vertices, dtype=np.float32),
+                         tri_verts=np.asarray(mesh.faces, dtype=np.uint32)))
+
+
+def makeBlade():
+    return makeFlatSection() + makeCorkscrew()
 
 
 def makeTang(clearance=0.0):
