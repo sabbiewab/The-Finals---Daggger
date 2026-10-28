@@ -3,8 +3,8 @@
 Every dimension below was measured off the in-game skin showcase image (side view, knife
 rotated level) at 0.405 mm per image pixel, which puts the prop at ~224 mm overall.
 
-  - slim blade: a flat section serrated on both edges near the guard, which splits into
-    three fins that twist a full turn like a corkscrew out to the tip
+  - three-edged corkscrew blade: three fins twisting from the guard out to the tip,
+    with serrations cut into all three edges near the guard
   - slim round tube handle with flared bells into front and rear flanges, eight recessed
     windows, a ring marking out the red band, and a ribbed venturi nozzle as the pommel
 
@@ -25,30 +25,25 @@ from shapely.geometry import LineString, Polygon
 # Overall scale (1.0 = ~224 mm overall, as measured)
 SCALE = 1.0
 
-# Flat serrated section next to the guard: (distance from guard, half width), measured from the skin image
-FLAT_PROFILE = [(0.0, 6.9), (13.0, 6.5), (29.0, 6.2), (40.3, 6.2)]
-BLADE_THICKNESS = 3.5         # spine thickness
-EDGE_THICKNESS = 1.0          # blunt edge for a safe, non-brittle resin prop
-GRIND_HALF_ANGLE = 12.0       # degrees, flat grind from edge to full thickness
+# Blade: three fins that twist like a corkscrew from the guard out to the tip.
+# (distance from guard, fin radius from the blade axis); the three fins project ~1.6x this wide,
+# so these radii reproduce the silhouette widths measured from the skin image
+FIN_PROFILE = [(0.5, 8.0), (13.0, 7.8), (29.0, 7.6), (45.0, 7.9), (60.0, 8.6), (72.0, 8.2),
+               (87.0, 5.8), (98.0, 3.6), (104.0, 2.2), (108.0, 0.6)]
+FIN_ROOT_THICKNESS = (3.5, 1.2)   # at the guard and at the tip
+FIN_EDGE_THICKNESS = 1.0          # blunt edges for a safe, non-brittle resin prop
+CORKSCREW_TWIST = 330.0           # degrees of twist from the guard to the tip (eased in and out)
+CORKSCREW_STATION = (0.15, 0.4)   # mm between lofted cross-sections: in the serrations, elsewhere
+CORKSCREW_RAYS = 360              # boundary samples per cross-section
+BLADE_START = FIN_PROFILE[0][0]   # flush with the handle's front face
+BLADE_LENGTH = FIN_PROFILE[-1][0]
 
-# Serrations on both edges of the flat section
+# Serrations cut into all three fin edges near the guard
 SERRATION_START = 12.0
-SERRATION_END = 39.0
+SERRATION_END = 45.0
 SERRATION_PITCH = 2.6
 SERRATION_RADIUS = 1.25
-
-# Corkscrew section: the flat blade splits into three fins that twist like a corkscrew to the tip
-CORKSCREW_START = 40.0
-CORKSCREW_SPLIT = 8.0         # length over which the third fin grows and the fins spread to 120 degrees
-CORKSCREW_TWIST = 220.0       # degrees of twist from CORKSCREW_START to the tip (eased in and out)
-# (distance from guard, fin radius from the blade axis); the three fins project ~1.6x this wide
-FIN_PROFILE = [(40.0, 6.2), (48.0, 7.8), (60.0, 8.6), (72.0, 8.2), (87.0, 5.8),
-               (98.0, 3.6), (104.0, 2.2), (108.0, 0.6)]
-FIN_ROOT_THICKNESS = (3.5, 1.2)   # at the corkscrew start and at the tip
-FIN_EDGE_THICKNESS = 1.0
-CORKSCREW_STATION = 0.3       # mm between lofted cross-sections
-CORKSCREW_RAYS = 720          # boundary samples per cross-section
-BLADE_LENGTH = FIN_PROFILE[-1][0]
+SERRATION_DEPTH = 0.95
 
 # Handle (all positions are distances back from the guard face)
 GRIP_RADIUS = 9.7
@@ -72,33 +67,11 @@ BAIL_HOLE_RADIUS = 0.7        # holes through the rear flange for a wire lanyard
 
 # Tang that joins the separate blade and handle prints
 TANG_LENGTH = 50.0
-TANG_WIDTH = 9.0
+TANG_RADIUS = 6.0             # how far the key's three arms reach from the axis
 TANG_CLEARANCE = 0.15         # per side, tune for your resin's shrinkage
 
-MESH_EDGE_LENGTH = 0.35       # refinement for the blade grind and twist
 REVOLVE_SEGMENTS = 128
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stl")
-
-
-def smoothCurve(points, values, samples):
-    raw = np.interp(samples, points, values)
-    kernel = np.exp(-0.5 * (np.linspace(-3, 3, 13) ** 2))
-    kernel /= kernel.sum()
-    padded = np.pad(raw, 6, mode="edge")
-    return np.convolve(padded, kernel, mode="valid")
-
-
-def flatHalfWidth(x):
-    """Half width of the flat section at distance x from the guard face."""
-    controlX, controlHalfWidth = zip(*FLAT_PROFILE)
-    return np.interp(x, controlX, controlHalfWidth)
-
-
-def flatOutline():
-    """Plan-view outline of the flat section, from just inside the guard to the corkscrew."""
-    xs = np.linspace(-0.5, FLAT_PROFILE[-1][0], 200)
-    hw = smoothCurve(xs, flatHalfWidth(np.clip(xs, 0, None)), xs)
-    return Polygon(np.vstack([np.column_stack([xs, hw]), np.column_stack([xs[::-1], -hw[::-1]])]))
 
 
 def polygonToCrossSection(poly):
@@ -112,83 +85,52 @@ def polygonToCrossSection(poly):
     return CrossSection(rings)
 
 
-def serratedOutline(outline):
-    """Outline with the serration scallops cut into both edges."""
-    cuts = []
-    x = SERRATION_START + SERRATION_PITCH / 2.0
-    while x + SERRATION_PITCH / 2.0 <= SERRATION_END:
-        edgeY = outline.intersection(LineString([(x, 0), (x, 50)])).bounds[3]
-        for side in (1, -1):
-            y = side * (edgeY + SERRATION_RADIUS * 0.15)
-            cuts.append(shapely.Point(x, y).buffer(SERRATION_RADIUS, quad_segs=8))
-        x += SERRATION_PITCH
-    return outline.difference(shapely.union_all(cuts))
-
-
-def makeFlatSection():
-    """Flat serrated blade, built by warping a refined slab by distance to the smooth edge."""
-    smoothOutline = flatOutline()
-    slab = Manifold.extrude(polygonToCrossSection(serratedOutline(smoothOutline)), 1.0)
-    slab = slab.translate((0, 0, -0.5)).refine_to_length(MESH_EDGE_LENGTH)
-    # Grind toward the smooth side edges only: the heel hides in the guard and the far end
-    # is buried in the corkscrew, so both stay full thickness.
-    sideEdges = shapely.difference(smoothOutline.exterior, shapely.box(-10, -50, 0.5, 50))
-    sideEdges = shapely.difference(sideEdges, shapely.box(FLAT_PROFILE[-1][0] - 0.5, -50, 200, 50))
-    slope = 2.0 * np.tan(np.radians(GRIND_HALF_ANGLE))
-
-    def warpBatch(verts):
-        verts = np.array(verts, dtype=float)
-        dist = shapely.distance(shapely.points(verts[:, 0], verts[:, 1]), sideEdges)
-        thick = np.minimum(BLADE_THICKNESS, EDGE_THICKNESS + slope * dist)
-        # Slab spans z = -0.5..0.5; scale linearly so refined side-wall vertices stay in order.
-        verts[:, 2] = verts[:, 2] * thick
-        return verts
-
-    return slab.warp_batch(warpBatch)
+def serrationCut(u):
+    """How far the scalloped serrations cut into the fin edges at distance u from the guard."""
+    if u < SERRATION_START or u > SERRATION_END:
+        return 0.0
+    offset = (u - SERRATION_START) % SERRATION_PITCH - SERRATION_PITCH / 2.0
+    return max(0.0, np.sqrt(max(SERRATION_RADIUS ** 2 - offset ** 2, 0.0)) - (SERRATION_RADIUS - SERRATION_DEPTH))
 
 
 def finCrossSection(u):
     """Three-fin star cross-section at distance u from the guard, before twisting.
 
-    Fin directions are angles in the YZ plane (y = sin, z = cos). At the corkscrew start two
-    fins point along +/-Y like the flat blade; over CORKSCREW_SPLIT they spread to 120 degrees
-    apart while the third fin grows out of the +Z face.
+    Fins point 120 degrees apart in the YZ plane (y = sin, z = cos of the fin angle).
     """
-    split = np.clip((u - CORKSCREW_START) / CORKSCREW_SPLIT, 0, 1)
-    split = split * split * (3 - 2 * split)
     controlU, controlRadius = zip(*FIN_PROFILE)
-    radius = float(np.interp(u, controlU, controlRadius))
-    along = np.clip((u - CORKSCREW_START) / (BLADE_LENGTH - CORKSCREW_START), 0, 1)
+    radius = float(np.interp(u, controlU, controlRadius)) - serrationCut(u)
+    along = np.clip((u - BLADE_START) / (BLADE_LENGTH - BLADE_START), 0, 1)
     rootHalf = (FIN_ROOT_THICKNESS[0] + (FIN_ROOT_THICKNESS[1] - FIN_ROOT_THICKNESS[0]) * along) / 2.0
     edgeHalf = min(FIN_EDGE_THICKNESS / 2.0, rootHalf)
-    fins = [(90.0 + 30.0 * split, radius), (270.0 - 30.0 * split, radius), (0.0, radius * split)]
-    shapes = [shapely.Point(0, 0).buffer(rootHalf, quad_segs=16)]
-    for angle, finRadius in fins:
-        reach = finRadius - edgeHalf
-        if reach <= rootHalf:
-            continue
-        a = np.radians(angle)
-        tip = shapely.Point(reach * np.sin(a), reach * np.cos(a)).buffer(edgeHalf, quad_segs=16)
-        shapes.append(shapely.union_all([shapes[0], tip]).convex_hull)
+    core = shapely.Point(0, 0).buffer(rootHalf, quad_segs=16)
+    shapes = [core]
+    reach = radius - edgeHalf
+    if reach > rootHalf:
+        for angle in np.radians([90.0, 210.0, 330.0]):
+            tip = shapely.Point(reach * np.sin(angle), reach * np.cos(angle)).buffer(edgeHalf, quad_segs=16)
+            shapes.append(shapely.union_all([core, tip]).convex_hull)
     # Closing adds small fillets where the fins meet the core.
     return shapely.union_all(shapes).buffer(0.4, quad_segs=8).buffer(-0.4, quad_segs=8)
 
 
-def makeCorkscrew():
-    """Loft the twisted three-fin section from inside the flat blade out to the tip."""
-    stations = np.arange(CORKSCREW_START - 0.5, BLADE_LENGTH, CORKSCREW_STATION)
-    stations = np.append(stations, BLADE_LENGTH)
+def makeBlade():
+    """Loft the twisted three-fin section from the guard face out to the tip."""
+    fine, coarse = CORKSCREW_STATION
+    stations = np.concatenate([np.arange(BLADE_START, SERRATION_START, coarse),
+                               np.arange(SERRATION_START, SERRATION_END + fine, fine),
+                               np.arange(SERRATION_END + coarse, BLADE_LENGTH, coarse), [BLADE_LENGTH]])
     rayAngles = np.linspace(0, 2 * np.pi, CORKSCREW_RAYS, endpoint=False)
     rays = [LineString([(0, 0), (30 * np.sin(a), 30 * np.cos(a))]) for a in rayAngles]
     rings = []
     for u in stations:
         # The star is convex along every ray from the axis, so the hit length is the boundary radius.
         reach = shapely.length(shapely.intersection(rays, finCrossSection(u)))
-        t = np.clip((u - CORKSCREW_START) / (BLADE_LENGTH - CORKSCREW_START), 0, 1)
+        t = (u - BLADE_START) / (BLADE_LENGTH - BLADE_START)
         twist = np.radians(CORKSCREW_TWIST) * t * t * (3 - 2 * t)
         rings.append(np.column_stack([np.full(CORKSCREW_RAYS, u),
                                       reach * np.sin(rayAngles + twist), reach * np.cos(rayAngles + twist)]))
-    return loftRings(rings)
+    return loftRings(rings).simplify(0.01)
 
 
 def loftRings(rings):
@@ -211,16 +153,18 @@ def loftRings(rings):
                          tri_verts=np.asarray(mesh.faces, dtype=np.uint32)))
 
 
-def makeBlade():
-    return makeFlatSection() + makeCorkscrew()
-
-
 def makeTang(clearance=0.0):
-    length = TANG_LENGTH + clearance
-    width = TANG_WIDTH + 2 * clearance
-    thick = BLADE_THICKNESS + 2 * clearance
-    return Manifold.cube((length + 1.0, width, thick)).translate(
-        (-length, -width / 2.0, -thick / 2.0))
+    """Y-shaped key tang: the blade's own base cross-section trimmed to TANG_RADIUS.
+
+    It fits inside the blade at the guard, so nothing shows, and it can't spin in the handle.
+    """
+    key = finCrossSection(BLADE_START).intersection(shapely.Point(0, 0).buffer(TANG_RADIUS, quad_segs=32))
+    key = key.buffer(clearance - 0.2, quad_segs=8)
+    length = TANG_LENGTH + BLADE_START + 0.3 + clearance
+    prism = Manifold.extrude(polygonToCrossSection(key), length)
+    # Extrusion runs along Z with the key in XY; map (X, Y, Z) -> (y, z, x) so it runs along X.
+    prism = prism.transform([[0, 0, 1, 0], [1, 0, 0, 0], [0, 1, 0, 0]])
+    return prism.translate((-TANG_LENGTH - clearance, 0, 0))
 
 
 def flangeRim(start, end, radius):

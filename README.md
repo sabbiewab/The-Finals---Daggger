@@ -10,9 +10,9 @@ The comparison below puts the cosmetic image (top) at the same scale as the mode
 
 ## Features
 
-- **Blade:** 108 mm long.
-  - Next to the guard is a flat section, 13.8 mm wide and 3.5 mm thick, serrated on both edges from 12 to 39 mm.
-  - At 40 mm it splits into three fins that twist like a corkscrew (220°, eased in and out) out to a spear point.
+- **Blade:** 108 mm long, a three-edged corkscrew from the guard to the tip.
+  - Three fins, 120° apart, twist 330° along the blade (eased in and out), with a 3.5 mm core.
+  - Serrations are cut into all three fin edges from 12 to 45 mm out from the guard.
   - Change `CORKSCREW_TWIST` in `dagger.py` for a tighter or looser twist.
 - **Handle:** a slim recoilless-rifle tube, 116 mm long with a 19.4 mm grip.
   - Concave bells flare out to the front flange (34 mm across) and the rear flange (32 mm).
@@ -28,7 +28,7 @@ This is a **prop**. The edges are modelled blunt (`EDGE_THICKNESS = 1.0` mm) and
 ## Files
 
 - `stl/dagger_full.stl` prints in one piece.
-- `stl/dagger_blade.stl` is the blade with a 50 x 9 x 3.5 mm tang.
+- `stl/dagger_blade.stl` is the blade with a 50 mm Y-shaped key tang. The key is the blade's own base cross-section trimmed down, so it stays hidden and can't spin in the handle.
 - `stl/dagger_handle.stl` is the handle, with a tang slot (0.15 mm clearance per side). Print the two parts separately to make painting easier, then glue them together.
 - `dagger.py` is the parametric model. Edit the ALL_CAPS constants at the top and re-run it.
 - `render_preview.py` writes a quick matplotlib preview to `images/preview.png`.
@@ -49,7 +49,7 @@ python3 render_preview.py
 
 - Every part fits the M3 Max build volume (298 x 164 x 300 mm).
 - **Handle:** print it standing on the nozzle end, tilted about 10-15°. The grip is slim, so print it solid (about 37 cm³ of resin), or hollow it with a wall of at least 3 mm.
-- **Blade:** print it tip-up at 15-30°. Put supports on the tang, and use light supports along the spine, keeping them off the corkscrew fins.
+- **Blade:** print it tip-up at 15-30°. Put supports on the tang. If the fins need support, use light supports on the fin roots only.
 - **Resin:** the corkscrew fins are the most fragile parts (1 mm edges), so use a tough or ABS-like resin for the blade.
 - **Tang fit:** test-fit the tang in the slot. If it's too tight or too loose for your resin, change `TANG_CLEARANCE`.
 
