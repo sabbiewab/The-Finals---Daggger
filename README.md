@@ -1,6 +1,6 @@
 # THE FINALS Dagger Prop: Recoilless Blade
 
-A parametric, 3D-printable prop of the THE FINALS dagger in its **Recoilless Blade** skin. Every dimension was measured off the in-game skin showcase image, at 0.405 mm per image pixel.
+A parametric, 3D-printable prop of the THE FINALS dagger in its **Recoilless Blade** skin. Every dimension was measured off the in-game skin showcase image, at 0.405 mm per image pixel. The details were checked against the official skin render on [THE FINALS Wiki](https://www.thefinals.wiki/wiki/Dagger) and in-game footage.
 
 ![Render](images/render.png)
 
@@ -13,9 +13,11 @@ The comparison below puts the cosmetic image (top) at the same scale as the mode
 - **Blade:** 108 mm long, a three-edged corkscrew from the guard to the tip.
   - Three fins, 120° apart, twist 330° along the blade (eased in and out), with a 3.5 mm core.
   - Serrations are cut into all three fin edges from 12 to 45 mm out from the guard.
+  - Each fin has two see-through windows, staggered from fin to fin like the skin's (`FIN_WINDOWS`).
   - Change `CORKSCREW_TWIST` in `dagger.py` for a tighter or looser twist.
 - **Handle:** a slim recoilless-rifle tube, 116 mm long with a 19.4 mm grip.
-  - Concave bells flare out to the front flange (34 mm across) and the rear flange (32 mm).
+  - The front guard has four corners: a diamond-shaped flange, 34 mm across the corners, that flares down into the round grip.
+  - A concave bell flares out to the round rear flange (32 mm).
   - Eight recessed windows sit in alternating rows, and two grooves mark out the red band.
   - A domed cap and a ribbed venturi nozzle form the pommel.
 - **Lanyard bail:** two small holes through the rear flange take a bent wire loop, like the one on the in-game skin.

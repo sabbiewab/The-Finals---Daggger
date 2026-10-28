@@ -3,8 +3,9 @@
 Every dimension below was measured off the in-game skin showcase image (side view, knife
 rotated level) at 0.405 mm per image pixel, which puts the prop at ~224 mm overall.
 
-  - three-edged corkscrew blade: three fins twisting from the guard out to the tip,
-    with serrations cut into all three edges near the guard
+  - three-edged corkscrew blade: three fins twisting from the guard out to the tip, with
+    serrations cut into all three edges near the guard and staggered see-through windows
+  - four-cornered front guard flaring into the grip
   - slim round tube handle with flared bells into front and rear flanges, eight recessed
     windows, a ring marking out the red band, and a ribbed venturi nozzle as the pommel
 
@@ -33,6 +34,7 @@ FIN_PROFILE = [(0.5, 8.0), (13.0, 7.8), (29.0, 7.6), (45.0, 7.9), (60.0, 8.6), (
 FIN_ROOT_THICKNESS = (3.5, 1.2)   # at the guard and at the tip
 FIN_EDGE_THICKNESS = 1.0          # blunt edges for a safe, non-brittle resin prop
 CORKSCREW_TWIST = 330.0           # degrees of twist from the guard to the tip (eased in and out)
+FIN_ANGLES = (90.0, 210.0, 330.0) # fin directions at the guard, in the YZ plane (y = sin, z = cos)
 CORKSCREW_STATION = (0.15, 0.4)   # mm between lofted cross-sections: in the serrations, elsewhere
 CORKSCREW_RAYS = 360              # boundary samples per cross-section
 BLADE_START = FIN_PROFILE[0][0]   # flush with the handle's front face
@@ -45,10 +47,18 @@ SERRATION_PITCH = 2.6
 SERRATION_RADIUS = 1.25
 SERRATION_DEPTH = 0.95
 
+# See-through windows in each fin, staggered from fin to fin as on the skin: (start, end) per fin
+FIN_WINDOWS = [[(10.0, 30.0), (50.0, 72.0)],
+               [(33.0, 57.0), (68.0, 84.0)],
+               [(20.0, 44.0), (60.0, 80.0)]]
+WINDOW_RAIL = 2.0             # solid rail left along each fin edge (inside the serrations)
+WINDOW_CORE_GAP = 1.0         # solid web left between the core and each window
+
 # Handle (all positions are distances back from the guard face)
 GRIP_RADIUS = 9.7
-FRONT_FLANGE = (0.0, 4.0, 17.2)       # (start, end, radius)
+FRONT_FLANGE = (0.0, 4.0, 17.2)       # (start, end, corner radius)
 FRONT_BELL_END = 25.0                 # bell flares from the front flange down to the grip
+FRONT_DIAMOND = 1.15                  # superellipse exponent of the four-cornered front guard (2 = round)
 REAR_BELL_START = 80.0                # bell flares from the grip up to the rear flange
 REAR_FLANGE = (90.7, 94.8, 15.8)
 CAP_END = 99.0                        # domed cap behind the rear flange
@@ -107,7 +117,7 @@ def finCrossSection(u):
     shapes = [core]
     reach = radius - edgeHalf
     if reach > rootHalf:
-        for angle in np.radians([90.0, 210.0, 330.0]):
+        for angle in np.radians(FIN_ANGLES):
             tip = shapely.Point(reach * np.sin(angle), reach * np.cos(angle)).buffer(edgeHalf, quad_segs=16)
             shapes.append(shapely.union_all([core, tip]).convex_hull)
     # Closing adds small fillets where the fins meet the core.
@@ -126,11 +136,44 @@ def makeBlade():
     for u in stations:
         # The star is convex along every ray from the axis, so the hit length is the boundary radius.
         reach = shapely.length(shapely.intersection(rays, finCrossSection(u)))
-        t = (u - BLADE_START) / (BLADE_LENGTH - BLADE_START)
-        twist = np.radians(CORKSCREW_TWIST) * t * t * (3 - 2 * t)
+        twist = bladeTwist(u)
         rings.append(np.column_stack([np.full(CORKSCREW_RAYS, u),
                                       reach * np.sin(rayAngles + twist), reach * np.cos(rayAngles + twist)]))
-    return loftRings(rings).simplify(0.01)
+    return loftRings(rings).simplify(0.01) - makeFinWindowCutters()
+
+
+def bladeTwist(u):
+    """Corkscrew twist in radians at distance u from the guard, eased in and out."""
+    t = np.clip((u - BLADE_START) / (BLADE_LENGTH - BLADE_START), 0, 1)
+    return np.radians(CORKSCREW_TWIST) * t * t * (3 - 2 * t)
+
+
+def makeFinWindowCutters():
+    """Twisted slot-shaped cutters that follow each fin, for the see-through windows."""
+    controlU, controlRadius = zip(*FIN_PROFILE)
+    cutters = []
+    for finAngle, windows in zip(FIN_ANGLES, FIN_WINDOWS):
+        for start, end in windows:
+            rings = []
+            for u in np.append(np.arange(start, end, CORKSCREW_STATION[1]), end):
+                along = (u - BLADE_START) / (BLADE_LENGTH - BLADE_START)
+                rootHalf = (FIN_ROOT_THICKNESS[0] + (FIN_ROOT_THICKNESS[1] - FIN_ROOT_THICKNESS[0]) * along) / 2.0
+                inner = rootHalf + WINDOW_CORE_GAP
+                outer = float(np.interp(u, controlU, controlRadius)) - WINDOW_RAIL
+                if SERRATION_START <= u <= SERRATION_END:
+                    outer -= SERRATION_DEPTH
+                halfSpan = max((outer - inner) / 2.0, 0.05)
+                # Round the window ends: the radial opening closes in a half circle.
+                toEnd = min(u - start, end - u)
+                half = halfSpan if toEnd >= halfSpan else np.sqrt(max(halfSpan ** 2 - (halfSpan - toEnd) ** 2, 0.0))
+                half = max(half, 0.05)
+                middle = (inner + outer) / 2.0
+                phi = np.radians(finAngle) + bladeTwist(u)
+                corners = [(middle - half, -3.0), (middle + half, -3.0), (middle + half, 3.0), (middle - half, 3.0)]
+                rings.append(np.array([(u, r * np.sin(phi) + t * np.cos(phi), r * np.cos(phi) - t * np.sin(phi))
+                                       for r, t in corners]))
+            cutters.append(loftRings(rings))
+    return Manifold.batch_boolean(cutters, OpType.Add)
 
 
 def loftRings(rings):
@@ -174,13 +217,11 @@ def flangeRim(start, end, radius):
 
 def handleProfile():
     """(radius, distance from guard face) outline of the revolved handle, front to back."""
-    frontStart, frontEnd, frontRadius = FRONT_FLANGE
     rearStart, rearEnd, rearRadius = REAR_FLANGE
-    profile = [(0.0, frontStart)] + flangeRim(*FRONT_FLANGE)
-    # Concave bell from the front flange down into the grip
-    bellDrop = frontRadius - 1.0 - GRIP_RADIUS
-    for t in np.linspace(0, 1, 32)[1:]:
-        profile.append((GRIP_RADIUS + bellDrop * (1 - t) ** 2.2, frontEnd + (FRONT_BELL_END - frontEnd) * t))
+    # The front guard and bell are lofted separately (makeFrontGuard); start just inside the bell.
+    # It sits 0.05 mm under the bell surface there, so the union has no coincident faces.
+    profile = [(0.0, FRONT_BELL_END - 0.5), (GRIP_RADIUS - 0.05, FRONT_BELL_END - 0.5),
+               (GRIP_RADIUS - 0.05, FRONT_BELL_END)]
     # Grip tube with two paint-guide grooves around the red band
     for u in np.arange(FRONT_BELL_END + 0.5, REAR_BELL_START, 0.5):
         r = GRIP_RADIUS
@@ -233,11 +274,40 @@ def makeBailHoles():
     return Manifold.batch_boolean(holes, OpType.Add)
 
 
+def frontGuardRadius(u):
+    """Corner radius of the front guard and bell at distance u back from its front face."""
+    start, end, radius = FRONT_FLANGE
+    if u <= end:
+        # Flange rim with 0.8 mm chamfers on both faces
+        return radius - max(0.0, 0.8 - (u - start), 0.8 - (end - u))
+    t = min((u - end) / (FRONT_BELL_END - end), 1.0)
+    return GRIP_RADIUS + (radius - 1.0 - GRIP_RADIUS) * (1 - t) ** 2.2
+
+
+def makeFrontGuard():
+    """Four-cornered front guard: a diamond-ish flange that flares down into the round grip."""
+    start = FRONT_FLANGE[0]
+    stations = np.concatenate([np.linspace(start, FRONT_FLANGE[1], 9),
+                               np.linspace(FRONT_FLANGE[1], FRONT_BELL_END, 43)[1:]])
+    # Offset half a segment from the revolved grip so no vertices coincide where they meet.
+    angles = np.linspace(0, 2 * np.pi, REVOLVE_SEGMENTS, endpoint=False) + np.pi / REVOLVE_SEGMENTS
+    rings = []
+    for u in list(stations) + [FRONT_BELL_END + 0.3]:
+        t = np.clip((u - FRONT_FLANGE[1]) / (FRONT_BELL_END - FRONT_FLANGE[1]), 0, 1)
+        # Corners stay crisp down most of the bell, then round off into the grip.
+        exponent = FRONT_DIAMOND + (2.0 - FRONT_DIAMOND) * t ** 2
+        # Past the bell end the ring tucks just inside the grip.
+        radius = frontGuardRadius(u) if u <= FRONT_BELL_END else GRIP_RADIUS - 0.3
+        reach = radius / (np.abs(np.sin(angles)) ** exponent + np.abs(np.cos(angles)) ** exponent) ** (1 / exponent)
+        rings.append(np.column_stack([np.full(len(angles), 0.5 - u), reach * np.sin(angles), reach * np.cos(angles)]))
+    return loftRings(rings)
+
+
 def makeHandle():
     profile = CrossSection([handleProfile()])
     # revolve() spins around Y and puts that axis on Z; turn Z (distance back) into -X.
     handle = Manifold.revolve(profile, REVOLVE_SEGMENTS).rotate((0, -90, 0)).translate((0.5, 0, 0))
-    return handle - makeWindowCutters() - makeBailHoles()
+    return handle + makeFrontGuard() - makeWindowCutters() - makeBailHoles()
 
 
 def toTrimesh(solid):
