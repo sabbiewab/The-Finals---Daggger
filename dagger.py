@@ -1,8 +1,12 @@
-"""Parametric THE FINALS dagger prop, based on the Fox Knives FX-647 S (Elementum dagger).
+"""Parametric THE FINALS dagger prop, "Recoilless Blade" skin.
 
-Reference specs (retailer listings, e.g. Knivesandtools FOFX-647S):
-  blade length 100 mm, overall ~200-206 mm, handle ~100 mm,
-  blade height 30 mm, blade thickness 3 mm, partially serrated edge.
+The skin pairs a slim dagger blade with a recoilless-rifle themed handle:
+  - blade serrated on both edges near the guard, then twisting half a turn to the tip,
+    with two through-slots along the centerline that spiral with the twist
+  - round tube handle with flared front and rear flanges, recessed windows,
+    a ring that marks out the red band, and a ribbed venturi nozzle as the pommel
+
+Proportions were measured from in-game skin showcase images and scaled to a ~214 mm prop.
 
 Coordinates: X runs along the knife (guard face at x = 0, tip at +X, pommel at -X),
 Y is the blade width direction, Z is the blade thickness direction. Units are mm.
@@ -16,55 +20,76 @@ import numpy as np
 import shapely
 import trimesh
 from manifold3d import CrossSection, Manifold, Mesh, OpType
-from shapely.geometry import Polygon
+from shapely.geometry import LineString, Polygon
 
-# Overall scale (1.0 = real FX-647 S size)
+# Overall scale (1.0 = ~214 mm overall)
 SCALE = 1.0
 
 # Blade
-BLADE_LENGTH = 100.0          # guard face to tip
-BLADE_WIDTH = 28.0            # max width (spec lists 30 mm blade height incl. guard overlap)
-BLADE_THICKNESS = 3.0         # spine / flat thickness
+BLADE_LENGTH = 105.0          # guard face to tip
+BLADE_WIDTH = 18.0            # width of the straight section near the guard
+BLADE_THICKNESS = 4.0         # spine thickness (thicker than a real knife so the twist prints strong)
 EDGE_THICKNESS = 1.0          # blunt edge for a safe, non-brittle resin prop
-GRIND_HALF_ANGLE = 8.0        # degrees, flat grind from edge to full thickness
+GRIND_HALF_ANGLE = 10.0       # degrees, flat grind from edge to full thickness
 TIP_RADIUS = 1.0              # rounds the point in plan view
 
-# Serrations on one edge, near the guard
-SERRATION_START = 6.0
-SERRATION_END = 40.0
-SERRATION_PITCH = 4.5
-SERRATION_RADIUS = 2.0
+# Twist of the front section
+TWIST_START = 40.0            # distance from guard where the twist begins
+TWIST_ANGLE = 180.0           # degrees of twist from TWIST_START to the tip
 
-# Handle
-HANDLE_LENGTH = 103.0
-LANYARD_HOLE_RADIUS = 3.0
-LANYARD_HOLE_POS = 92.0       # distance from guard face
+# Through-slots along the centerline, as (start, end) distances from the guard
+BLADE_SLOTS = [(31.0, 52.0), (64.0, 80.0)]
+SLOT_WIDTH = 3.0
+
+# Serrations on both edges near the guard
+SERRATION_START = 12.0
+SERRATION_END = 46.0
+SERRATION_PITCH = 2.6
+SERRATION_RADIUS = 1.3
+
+# Handle (all positions are distances back from the guard face)
+GRIP_RADIUS = 13.0
+FLANGE_RADIUS = 22.0
+WINDOW_DEPTH = 2.0
+WINDOW_WIDTH = 4.5
+# Window rows around the tube, alternating B/A, as (start, end) spans
+WINDOW_COUNT = 6
+WINDOW_ROW_A = [(27.5, 46.0), (54.0, 58.0), (64.5, 69.5)]
+WINDOW_ROW_B = [(30.5, 46.0), (54.0, 69.5)]
+BAND_START = 48.0             # red band, marked by two paint-guide grooves
+BAND_END = 53.0
+BAIL_HOLE_RADIUS = 0.8        # holes through the rear flange for a wire lanyard bail
 
 # Tang that joins the separate blade and handle prints
-TANG_LENGTH = 60.0
+TANG_LENGTH = 55.0
 TANG_WIDTH = 12.0
 TANG_CLEARANCE = 0.15         # per side, tune for your resin's shrinkage
 
-MESH_EDGE_LENGTH = 0.6        # refinement for the blade grind surface
+MESH_EDGE_LENGTH = 0.6        # refinement for the blade grind and twist
+REVOLVE_SEGMENTS = 128
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stl")
 
 
+def smoothCurve(points, values, samples):
+    raw = np.interp(samples, points, values)
+    kernel = np.exp(-0.5 * (np.linspace(-3, 3, 13) ** 2))
+    kernel /= kernel.sum()
+    padded = np.pad(raw, 6, mode="edge")
+    return np.convolve(padded, kernel, mode="valid")
+
+
 def bladeHalfWidth(x):
-    """Half width of the blade at distance x from the guard face."""
-    halfWidth = BLADE_WIDTH / 2.0
-    baseHalfWidth = halfWidth - 1.0
-    bellyStart = 18.0
-    x = np.asarray(x, dtype=float)
-    # Slight swell from the guard to the belly, then a curved spear-point taper.
-    swell = baseHalfWidth + (halfWidth - baseHalfWidth) * np.clip(x / bellyStart, 0, 1)
-    taperPos = np.clip((x - bellyStart) / (BLADE_LENGTH - bellyStart), 0, 1)
-    return swell * (1.0 - taperPos ** 1.8)
+    """Half width of the blade at distance x from the guard face (straight, then spear point)."""
+    controlX = [0, TWIST_START, 60, 80, 95, BLADE_LENGTH]
+    controlHalfWidth = np.array([1.0, 1.0, 0.95, 0.76, 0.42, 0.0]) * BLADE_WIDTH / 2.0
+    return np.interp(x, controlX, controlHalfWidth)
 
 
 def bladeOutline():
     """Plan-view outline of the blade as a shapely polygon (rounded tip)."""
     xs = np.linspace(-0.5, BLADE_LENGTH, 400)
-    hw = bladeHalfWidth(np.clip(xs, 0, None))
+    hw = smoothCurve(xs, bladeHalfWidth(np.clip(xs, 0, None)), xs)
+    hw[-1] = 0.0
     upper = np.column_stack([xs, hw])
     lower = np.column_stack([xs[::-1], -hw[::-1]])
     outline = Polygon(np.vstack([upper, lower[1:-1]]))
@@ -79,14 +104,12 @@ def polygonToCrossSection(poly):
     return CrossSection([coords.tolist()])
 
 
-def makeBladeBody():
+def makeBladeBody(outline):
     """Blade with a flat grind, built by warping a refined slab by distance-to-edge."""
-    outline = bladeOutline()
     slab = Manifold.extrude(polygonToCrossSection(outline), 1.0).translate((0, 0, -0.5))
     slab = slab.refine_to_length(MESH_EDGE_LENGTH)
-    boundary = outline.exterior
     # The heel (x < 0.5) is hidden in the guard; keep it full thickness there.
-    edgeOnly = shapely.difference(boundary, shapely.box(-10, -50, 0.5, 50))
+    edgeOnly = shapely.difference(outline.exterior, shapely.box(-10, -50, 0.5, 50))
     slope = 2.0 * np.tan(np.radians(GRIND_HALF_ANGLE))
 
     def warpBatch(verts):
@@ -100,15 +123,48 @@ def makeBladeBody():
     return slab.warp_batch(warpBatch)
 
 
-def makeSerrationCutters():
+def makeSerrationCutters(outline):
     cutters = []
     x = SERRATION_START + SERRATION_PITCH / 2.0
     while x + SERRATION_PITCH / 2.0 <= SERRATION_END:
-        y = float(bladeHalfWidth(x)) + SERRATION_RADIUS * 0.45
-        cyl = Manifold.cylinder(BLADE_THICKNESS * 4, SERRATION_RADIUS, SERRATION_RADIUS, 48)
-        cutters.append(cyl.translate((x, y, -BLADE_THICKNESS * 2)))
+        edgeY = outline.intersection(LineString([(x, 0), (x, 50)])).bounds[3]
+        for side in (1, -1):
+            cyl = Manifold.cylinder(BLADE_THICKNESS * 4, SERRATION_RADIUS, SERRATION_RADIUS, 32)
+            y = side * (edgeY + SERRATION_RADIUS * 0.2)
+            cutters.append(cyl.translate((x, y, -BLADE_THICKNESS * 2)))
         x += SERRATION_PITCH
-    return Manifold.batch_boolean(cutters, OpType.Add) if cutters else Manifold()
+    return Manifold.batch_boolean(cutters, OpType.Add)
+
+
+def makeSlotCutters():
+    cutters = []
+    for start, end in BLADE_SLOTS:
+        slot = LineString([(start, 0), (end, 0)]).buffer(SLOT_WIDTH / 2.0, quad_segs=12)
+        prism = Manifold.extrude(polygonToCrossSection(slot), BLADE_THICKNESS * 4)
+        cutters.append(prism.translate((0, 0, -BLADE_THICKNESS * 2)))
+    return Manifold.batch_boolean(cutters, OpType.Add)
+
+
+def twistBlade(blade):
+    """Twist the front of the blade about the X axis with a smooth ramp-in."""
+    span = BLADE_LENGTH - TWIST_START
+
+    def warpBatch(verts):
+        verts = np.array(verts, dtype=float)
+        t = np.clip((verts[:, 0] - TWIST_START) / span, 0, 1)
+        theta = np.radians(TWIST_ANGLE) * t * t * (3 - 2 * t)
+        y, z = verts[:, 1].copy(), verts[:, 2].copy()
+        verts[:, 1] = y * np.cos(theta) - z * np.sin(theta)
+        verts[:, 2] = y * np.sin(theta) + z * np.cos(theta)
+        return verts
+
+    return blade.refine_to_length(MESH_EDGE_LENGTH).warp_batch(warpBatch)
+
+
+def makeBlade():
+    outline = bladeOutline()
+    blade = makeBladeBody(outline) - makeSerrationCutters(outline) - makeSlotCutters()
+    return twistBlade(blade)
 
 
 def makeTang(clearance=0.0):
@@ -119,65 +175,66 @@ def makeTang(clearance=0.0):
         (-length, -width / 2.0, -thick / 2.0))
 
 
-def smoothCurve(points, values, samples):
-    raw = np.interp(samples, points, values)
-    kernel = np.exp(-0.5 * (np.linspace(-3, 3, 13) ** 2))
-    kernel /= kernel.sum()
-    padded = np.pad(raw, 6, mode="edge")
-    return np.convolve(padded, kernel, mode="valid")
+def handleProfile():
+    """(radius, distance from guard face) outline of the revolved handle, front to back."""
+    profile = [(0.0, 0.0), (FLANGE_RADIUS - 1.0, 0.0), (FLANGE_RADIUS, 1.0), (FLANGE_RADIUS, 4.5)]
+    # Concave bell flaring from the front flange rim down into the grip
+    bellDrop = FLANGE_RADIUS - 0.5 - (GRIP_RADIUS + 0.5)
+    for t in np.linspace(0, 1, 32)[1:]:
+        profile.append((GRIP_RADIUS + 0.5 + bellDrop * (1 - t) ** 2.5, 4.5 + 13.0 * t))
+    # Grip tube with a slight taper and two paint-guide grooves around the red band
+    for u in np.arange(18.0, 72.0, 0.5):
+        r = GRIP_RADIUS + 0.5 - 0.5 * (u - 17.5) / 54.5
+        if abs(u - BAND_START) < 0.5 or abs(u - BAND_END) < 0.5:
+            r -= 0.5
+        profile.append((r, u))
+    # Concave bell flaring out to the rear flange rim
+    bellRise = FLANGE_RADIUS - 0.5 - GRIP_RADIUS
+    for t in np.linspace(0, 1, 24):
+        profile.append((GRIP_RADIUS + bellRise * t ** 2.5, 72.0 + 10.5 * t))
+    profile += [(FLANGE_RADIUS, 83.0), (FLANGE_RADIUS, 85.5), (FLANGE_RADIUS - 1.0, 86.5)]
+    # Domed cap behind the rear flange, then the nozzle neck
+    for t in np.linspace(0, 1, 8):
+        profile.append((16.0 - 3.0 * t ** 2, 86.5 + 2.5 * t))
+    profile += [(6.5, 89.5), (6.5, 92.0)]
+    # Ribbed venturi nozzle widening toward the end
+    ribCount = 6
+    nozzleLength = 16.0
+    for i in range(ribCount):
+        u0 = 92.0 + i * nozzleLength / ribCount
+        u1 = u0 + nozzleLength / ribCount
+        r = 7.5 + 2.0 * i / (ribCount - 1)
+        profile += [(r, u0 + 0.3), (r + 0.8, u0 + 0.8), (r + 0.8, u1 - 0.8), (r, u1 - 0.3)]
+    profile += [(9.5, 108.0), (7.0, 108.0), (5.5, 101.0), (0.0, 101.0)]
+    return profile
+
+
+def makeWindowCutters():
+    cutters = []
+    for k in range(WINDOW_COUNT):
+        row = WINDOW_ROW_B if k % 2 == 0 else WINDOW_ROW_A
+        for start, end in row:
+            stadium = LineString([(-start, 0), (-end, 0)]).buffer(WINDOW_WIDTH / 2.0, quad_segs=12)
+            pocket = Manifold.extrude(polygonToCrossSection(stadium), 10.0)
+            pocket = pocket.translate((0, 0, GRIP_RADIUS + 0.5 - WINDOW_DEPTH))
+            cutters.append(pocket.rotate((360.0 * k / WINDOW_COUNT, 0, 0)))
+    return Manifold.batch_boolean(cutters, OpType.Add)
+
+
+def makeBailHoles():
+    holes = []
+    for angle in (-20.0, 20.0):
+        pin = Manifold.cylinder(10.0, BAIL_HOLE_RADIUS, BAIL_HOLE_RADIUS, 16)
+        pin = pin.rotate((0, 90, 0)).translate((-88.0, 0, -(FLANGE_RADIUS - 2.5)))
+        holes.append(pin.rotate((angle, 0, 0)))
+    return Manifold.batch_boolean(holes, OpType.Add)
 
 
 def makeHandle():
-    """Lofted superellipse handle: integral guard, grooved grip, flared pommel."""
-    controlU = [0, 5, 8, 14, 30, 55, 80, 92, 97, HANDLE_LENGTH]
-    controlWidth = [34, 34, 30, 25, 24, 22.5, 24, 26, 25, 21]
-    controlThick = [14, 15, 17, 19, 20, 20.5, 20, 19, 18, 15]
-    uSamples = np.linspace(0, HANDLE_LENGTH, int(HANDLE_LENGTH * 2) + 1)
-    widths = smoothCurve(controlU, controlWidth, uSamples)
-    thicks = smoothCurve(controlU, controlThick, uSamples)
-
-    # Shallow grip rings between the guard and the pommel swell
-    groove = np.where((uSamples > 18) & (uSamples < 86),
-                      0.5 * (1 - np.cos(2 * np.pi * (uSamples - 18) / 6.8)), 0.0)
-    shrink = 1.0 - 0.6 * groove / (widths / 2.0)
-
-    segments = 72
-    theta = np.linspace(0, 2 * np.pi, segments, endpoint=False)
-    exponent = 2.6
-    cosT, sinT = np.cos(theta), np.sin(theta)
-    superX = np.sign(cosT) * np.abs(cosT) ** (2 / exponent)
-    superY = np.sign(sinT) * np.abs(sinT) ** (2 / exponent)
-
-    rings = []
-    for u, w, t, s in zip(uSamples, widths, thicks, shrink):
-        ring = np.column_stack([np.full(segments, -u + 0.5),
-                                superX * w / 2 * s, superY * t / 2 * s])
-        rings.append(ring)
-    verts = np.vstack(rings + [[[0.5, 0, 0]], [[-HANDLE_LENGTH + 0.5, 0, 0]]])
-    ringCount = len(rings)
-    frontCenter, backCenter = ringCount * segments, ringCount * segments + 1
-
-    faces = []
-    for r in range(ringCount - 1):
-        for i in range(segments):
-            a = r * segments + i
-            b = r * segments + (i + 1) % segments
-            c = a + segments
-            d = b + segments
-            faces += [[a, c, b], [b, c, d]]
-    for i in range(segments):
-        faces.append([frontCenter, i, (i + 1) % segments])
-        last = (ringCount - 1) * segments
-        faces.append([backCenter, last + (i + 1) % segments, last + i])
-
-    mesh = trimesh.Trimesh(verts, np.array(faces), process=True)
-    trimesh.repair.fix_normals(mesh)
-    handle = Manifold(Mesh(vert_properties=np.asarray(mesh.vertices, dtype=np.float32),
-                           tri_verts=np.asarray(mesh.faces, dtype=np.uint32)))
-
-    hole = Manifold.cylinder(40, LANYARD_HOLE_RADIUS, LANYARD_HOLE_RADIUS, 48)
-    hole = hole.translate((-LANYARD_HOLE_POS + 0.5, 0, -20))
-    return handle - hole
+    profile = CrossSection([handleProfile()])
+    # revolve() spins around Y and puts that axis on Z; turn Z (distance back) into -X.
+    handle = Manifold.revolve(profile, REVOLVE_SEGMENTS).rotate((0, -90, 0)).translate((0.5, 0, 0))
+    return handle - makeWindowCutters() - makeBailHoles()
 
 
 def toTrimesh(solid):
@@ -186,8 +243,7 @@ def toTrimesh(solid):
 
 
 def buildParts():
-    blade = makeBladeBody() - makeSerrationCutters()
-    bladeWithTang = blade + makeTang()
+    bladeWithTang = makeBlade() + makeTang()
     handle = makeHandle()
     return {
         "dagger_full": bladeWithTang + handle,
