@@ -11,7 +11,7 @@ The comparison below puts the cosmetic image (top) at the same scale as the mode
 ## Features
 
 - **Blade:** 108 mm long, a three-edged corkscrew from the guard to the tip.
-  - Three fins, 120° apart, twist 330° along the blade (eased in and out), with a 3.5 mm core.
+  - Three fins, 120° apart, twist about a third of a turn (120°, eased in and out) along the blade. They have thick, rounded 2 mm edges and a 4.6 mm core at the guard.
   - Serrations are cut into all three fin edges from 12 to 45 mm out from the guard.
   - Each fin has two see-through windows, staggered from fin to fin like the skin's (`FIN_WINDOWS`).
   - Change `CORKSCREW_TWIST` in `dagger.py` for a tighter or looser twist.
@@ -52,7 +52,7 @@ python3 render_preview.py
 - Every part fits the M3 Max build volume (298 x 164 x 300 mm).
 - **Handle:** print it standing on the nozzle end, tilted about 10-15°. The grip is slim, so print it solid (about 37 cm³ of resin), or hollow it with a wall of at least 3 mm.
 - **Blade:** print it tip-up at 15-30°. Put supports on the tang. If the fins need support, use light supports on the fin roots only.
-- **Resin:** the corkscrew fins are the most fragile parts (1 mm edges), so use a tough or ABS-like resin for the blade.
+- **Resin:** the thin webs beside the fin windows are the most fragile parts, so use a tough or ABS-like resin for the blade.
 - **Tang fit:** test-fit the tang in the slot. If it's too tight or too loose for your resin, change `TANG_CLEARANCE`.
 
 ## Notes

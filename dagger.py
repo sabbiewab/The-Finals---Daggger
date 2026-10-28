@@ -31,9 +31,9 @@ SCALE = 1.0
 # so these radii reproduce the silhouette widths measured from the skin image
 FIN_PROFILE = [(0.5, 8.0), (13.0, 7.8), (29.0, 7.6), (45.0, 7.9), (60.0, 8.6), (72.0, 8.2),
                (87.0, 5.8), (98.0, 3.6), (104.0, 2.2), (108.0, 0.6)]
-FIN_ROOT_THICKNESS = (3.5, 1.2)   # at the guard and at the tip
-FIN_EDGE_THICKNESS = 1.0          # blunt edges for a safe, non-brittle resin prop
-CORKSCREW_TWIST = 330.0           # degrees of twist from the guard to the tip (eased in and out)
+FIN_ROOT_THICKNESS = (4.6, 1.6)   # at the guard and at the tip
+FIN_EDGE_THICKNESS = 2.0          # thick rounded edges, as on the skin (also safe and strong in resin)
+CORKSCREW_TWIST = 120.0           # degrees of twist from the guard to the tip (about a third of a turn, eased)
 FIN_ANGLES = (90.0, 210.0, 330.0) # fin directions at the guard, in the YZ plane (y = sin, z = cos)
 CORKSCREW_STATION = (0.15, 0.4)   # mm between lofted cross-sections: in the serrations, elsewhere
 CORKSCREW_RAYS = 360              # boundary samples per cross-section
@@ -51,7 +51,7 @@ SERRATION_DEPTH = 0.95
 FIN_WINDOWS = [[(10.0, 30.0), (50.0, 72.0)],
                [(33.0, 57.0), (68.0, 84.0)],
                [(20.0, 44.0), (60.0, 80.0)]]
-WINDOW_RAIL = 2.0             # solid rail left along each fin edge (inside the serrations)
+WINDOW_RAIL = 1.6             # solid rail left along each fin edge (inside the serrations)
 WINDOW_CORE_GAP = 1.0         # solid web left between the core and each window
 
 # Handle (all positions are distances back from the guard face)
@@ -112,11 +112,13 @@ def finCrossSection(u):
     radius = float(np.interp(u, controlU, controlRadius)) - serrationCut(u)
     along = np.clip((u - BLADE_START) / (BLADE_LENGTH - BLADE_START), 0, 1)
     rootHalf = (FIN_ROOT_THICKNESS[0] + (FIN_ROOT_THICKNESS[1] - FIN_ROOT_THICKNESS[0]) * along) / 2.0
+    # Near the tip the core shrinks with the fins so the point closes instead of ending in a pin.
+    rootHalf = min(rootHalf, max(0.75 * radius, 0.3))
     edgeHalf = min(FIN_EDGE_THICKNESS / 2.0, rootHalf)
     core = shapely.Point(0, 0).buffer(rootHalf, quad_segs=16)
     shapes = [core]
     reach = radius - edgeHalf
-    if reach > rootHalf:
+    if reach > 0.0:
         for angle in np.radians(FIN_ANGLES):
             tip = shapely.Point(reach * np.sin(angle), reach * np.cos(angle)).buffer(edgeHalf, quad_segs=16)
             shapes.append(shapely.union_all([core, tip]).convex_hull)
